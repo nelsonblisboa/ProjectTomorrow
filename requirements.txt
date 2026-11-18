@@ -5,3 +5,5 @@ playwright
 apscheduler
 cryptography
 python-multipart
+httpx
+pytest

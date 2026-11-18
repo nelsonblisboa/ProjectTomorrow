@@ -4,16 +4,17 @@
 <div class="login-card">
   <h1>🛰️ MAG Tracker</h1>
   <p class="muted">Gestão inteligente de sinistros — MAG Seguros</p>
-  {% if erro %}<div class="alert alert-erro">{{ erro }}</div>{% endif %}
+  {% if erro %}<div class="alert alert-erro" role="alert">{{ erro }}</div>{% endif %}
   <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>E-mail
-      <input type="email" name="email" required autofocus placeholder="voce@empresa.com">
+      <input type="email" name="email" required autocomplete="username" autofocus placeholder="voce@empresa.com">
     </label>
     <label>Senha
-      <input type="password" name="senha" required placeholder="••••••••">
+      <input type="password" name="senha" required autocomplete="current-password" placeholder="••••••••">
     </label>
     <button class="btn btn-primary" type="submit">Entrar</button>
   </form>
-  <p class="muted small">Demo: admin@magtracker.local / admin123 · consulta@magtracker.local / consulta123</p>
+  {% if demo %}<p class="muted small">Modo de demonstração: admin@magtracker.local / admin123 · consulta@magtracker.local / consulta123</p>{% endif %}
 </div>
 {% endblock %}
