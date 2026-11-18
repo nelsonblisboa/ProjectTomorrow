@@ -5,8 +5,11 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
-from datetime import datetime, timezone
+import threading
+import time
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -15,16 +18,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db
-from .scraper import executar_coleta, INTERVALO_MINUTOS
+from .scraper import executar_coleta, consultar_processo_real, INTERVALO_MINUTOS
 
 BASE = Path(__file__).resolve().parent
 SECRET = os.environ.get("MAG_SECRET") or secrets.token_urlsafe(32)
 COOKIE = "mag_session"
 CSRF_COOKIE = "mag_csrf"
 ALERTA_DIAS = int(os.environ.get("MAG_ALERTA_DIAS", "30"))
-app = FastAPI(title="MAG Tracker", version="0.3.0")
+app = FastAPI(title="MAG Tracker", version="0.4.0")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+SCRAPER_ENABLED = os.environ.get("MAG_ENABLE_REAL_SCRAPER", "0").strip().lower() in {"1", "true", "yes"}
+_scrape_lock = threading.Lock()
+_last_scrape_by_process: dict[str, float] = {}
 
 
 def _sign(payload: str) -> str:
@@ -46,6 +52,53 @@ def _cookie_secure() -> bool:
 def _set_csrf_cookie(response, token: str) -> None:
     response.set_cookie(CSRF_COOKIE, token, httponly=True, secure=_cookie_secure(),
                         samesite="strict", max_age=3600)
+
+
+def _check_csrf(request: Request, submitted: str) -> None:
+    cookie_token = request.cookies.get(CSRF_COOKIE, "")
+    if not cookie_token or not hmac.compare_digest(cookie_token, submitted):
+        raise HTTPException(403, "Token de segurança inválido. Atualize a página e tente novamente.")
+
+
+def _issue_template(request: Request, name: str, context: dict, status_code: int = 200):
+    token = context.get("csrf_token") or secrets.token_urlsafe(32)
+    response = templates.TemplateResponse(
+        request=request, name=name, context={**context, "csrf_token": token},
+        status_code=status_code,
+    )
+    _set_csrf_cookie(response, token)
+    return response
+
+
+def _valid_cpf(value: str) -> bool:
+    digits = re.sub(r"\D", "", value)
+    if len(digits) != 11 or len(set(digits)) == 1:
+        return False
+    for length in (9, 10):
+        total = sum(int(digits[i]) * (length + 1 - i) for i in range(length))
+        check = (total * 10) % 11
+        if check == 10:
+            check = 0
+        if check != int(digits[length]):
+            return False
+    return True
+
+
+def _valid_process_number(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9./-]{1,30}", value.strip()))
+
+
+def _validate_process_fields(numero: str, cpf: str, nascimento: str, data_solicitacao: str) -> None:
+    if not _valid_process_number(numero):
+        raise HTTPException(422, "Informe um número de processo válido (até 30 letras, números, ponto, barra ou hífen).")
+    if cpf.strip() and not _valid_cpf(cpf):
+        raise HTTPException(422, "CPF inválido. Confira os dígitos e tente novamente.")
+    for field, value in (("nascimento", nascimento), ("data da solicitação", data_solicitacao)):
+        if value:
+            try:
+                date.fromisoformat(value)
+            except ValueError as exc:
+                raise HTTPException(422, f"Data de {field} inválida.") from exc
 
 
 def set_session(resp: RedirectResponse, user: dict) -> None:
@@ -131,32 +184,21 @@ def _start_scheduler():
 def page_login(request: Request):
     if get_session(request):
         return RedirectResponse("/", status_code=302)
-    token = secrets.token_urlsafe(32)
-    response = templates.TemplateResponse(
-        request=request, name="login.html", context={"erro": None, "csrf_token": token}
-    )
-    _set_csrf_cookie(response, token)
+    response = _issue_template(request, "login.html", {"erro": None, "demo": _modo_demo()})
     return response
 
 
 @app.post("/login")
 def do_login(request: Request, email: str = Form(...), senha: str = Form(...),
              csrf_token: str = Form(...)):
-    cookie_token = request.cookies.get(CSRF_COOKIE, "")
-    if not cookie_token or not hmac.compare_digest(cookie_token, csrf_token):
-        raise HTTPException(403, "Token de segurança inválido. Atualize a página e tente novamente.")
-
+    _check_csrf(request, csrf_token)
     user = db.autenticar(email, senha)
     ip = request.client.host if request.client else ""
     if not user:
         db.log_acesso(email, "login_falhou", "credenciais inválidas", ip)
-        response = templates.TemplateResponse(
-            request=request, name="login.html",
-            context={"erro": "Credenciais inválidas", "csrf_token": csrf_token},
-            status_code=401,
-        )
-        _set_csrf_cookie(response, csrf_token)
-        return response
+        return _issue_template(request, "login.html",
+                               {"erro": "Credenciais inválidas", "demo": _modo_demo(),
+                                "csrf_token": csrf_token}, 401)
     db.log_acesso(user["email"], "login", f"perfil={user['perfil']}", ip)
     response = RedirectResponse("/", status_code=303)
     set_session(response, user)
@@ -179,11 +221,9 @@ def do_logout(request: Request):
 def page_dashboard(request: Request, user: dict = Depends(require_user)):
     stats = db.dashboard_stats(ALERTA_DIAS)
     processes = db.listar_processos(limite=5)
-    return templates.TemplateResponse(
-        request=request, name="dashboard.html",
-        context={"user": user, "stats": stats, "recentes": processes,
-                 "alerta_dias": ALERTA_DIAS},
-    )
+    return _issue_template(request, "dashboard.html",
+                           {"user": user, "stats": stats, "recentes": processes,
+                            "alerta_dias": ALERTA_DIAS})
 
 
 @app.get("/processos", response_class=HTMLResponse)
@@ -198,6 +238,96 @@ def page_processos(request: Request, status: str | None = None, q: str | None = 
         context={"user": user, "processos": processes, "statuses": statuses,
                  "status_sel": status or "", "q": q or "", "alerta_dias": ALERTA_DIAS},
     )
+
+
+@app.get("/processos/novo", response_class=HTMLResponse)
+def page_novo_processo(request: Request, user: dict = Depends(require_admin)):
+    return _issue_template(request, "processo_novo.html",
+                           {"user": user, "demo": _modo_demo(),
+                            "scraper_enabled": SCRAPER_ENABLED, "resultado": None})
+
+
+@app.post("/processos/novo")
+def criar_processo_manual(
+    request: Request,
+    numero_processo: str = Form(...),
+    status: str = Form(...),
+    beneficio_solicitado: str = Form(""),
+    codigo_produtor: str = Form(""),
+    cliente_nome: str = Form(""),
+    cpf: str = Form(""),
+    data_nascimento: str = Form(""),
+    data_solicitacao: str = Form(""),
+    comentarios: str = Form(""),
+    csrf_token: str = Form(...),
+    user: dict = Depends(require_admin),
+):
+    _check_csrf(request, csrf_token)
+    _validate_process_fields(numero_processo, cpf, data_nascimento, data_solicitacao)
+    allowed_status = {"Em análise", "Pendente", "Concluído", "Aguardando documentação",
+                      "Deferido", "Indeferido"}
+    if status not in allowed_status:
+        raise HTTPException(422, "Status inválido.")
+    data = {"numero_processo": numero_processo.strip(), "status": status,
+            "beneficio_solicitado": beneficio_solicitado.strip() or None,
+            "codigo_produtor": codigo_produtor.strip() or None,
+            "cliente_nome": cliente_nome.strip() or None,
+            "cpf": cpf.strip() or None,
+            "data_nascimento": data_nascimento or None,
+            "data_solicitacao": data_solicitacao or None,
+            "ultima_atualizacao": date.today().isoformat(),
+            "dias_corridos": ((date.today() - date.fromisoformat(data_solicitacao)).days
+                              if data_solicitacao else None),
+            "comentarios": comentarios.strip() or None}
+    _, result = db.upsert_processo(data)
+    db.log_acesso(user["email"], "processo_manual", f"resultado={result}")
+    return RedirectResponse(f"/processos/{data['numero_processo']}", status_code=303)
+
+
+@app.post("/processos/raspar", response_class=HTMLResponse)
+def testar_scraper(
+    request: Request,
+    numero_processo: str = Form(...),
+    cpf: str = Form(""),
+    data_nascimento: str = Form(""),
+    csrf_token: str = Form(...),
+    user: dict = Depends(require_admin),
+):
+    _check_csrf(request, csrf_token)
+    if not SCRAPER_ENABLED:
+        raise HTTPException(403, "Consulta real desativada. Habilite MAG_ENABLE_REAL_SCRAPER=1 após confirmar autorização de acesso.")
+    if _modo_demo():
+        raise HTTPException(409, "Desative MAG_DEMO antes de consultar o portal real.")
+    _validate_process_fields(numero_processo, cpf, data_nascimento, "")
+    key = numero_processo.strip()
+    now = time.monotonic()
+    with _scrape_lock:
+        last = _last_scrape_by_process.get(key, 0)
+        if now - last < 60:
+            raise HTTPException(429, "Aguarde 60 segundos antes de consultar novamente este processo.")
+        _last_scrape_by_process[key] = now
+
+    result = consultar_processo_real(key, cpf or None, data_nascimento or None)
+    if result.get("ok") and result.get("dados"):
+        data = result["dados"]
+        meaningful = any(data.get(field) for field in
+                         ("status", "cliente_nome", "beneficio_solicitado", "comentarios",
+                          "ultima_atualizacao", "data_solicitacao"))
+        if meaningful:
+            data["numero_processo"] = key
+            db.upsert_processo(data)
+            message = "Consulta concluída; dados retornados foram atualizados no sistema."
+        else:
+            message = "O portal respondeu, mas não foi possível reconhecer dados do processo. Nada foi salvo."
+    elif result.get("bloqueado"):
+        message = "O portal recusou a consulta ou exige uma sessão/autorização válida. Nada foi salvo."
+    else:
+        message = "Não foi possível concluir a consulta. Confira os dados e a autorização de acesso; nada foi salvo."
+    db.log_acesso(user["email"], "scraper_teste",
+                  f"resultado={'ok' if result.get('ok') else 'falha'}")
+    return _issue_template(request, "processo_novo.html",
+                           {"user": user, "demo": False, "scraper_enabled": True,
+                            "resultado": message, "numero_teste": key})
 
 
 @app.get("/processos/{numero}", response_class=HTMLResponse)
@@ -233,11 +363,14 @@ def api_processos(status: str | None = None, q: str | None = None,
 
 
 @app.post("/api/coleta/run")
-def api_coleta_now(user: dict = Depends(require_admin)):
+def api_coleta_now(request: Request, csrf_token: str = Form(...),
+                   user: dict = Depends(require_admin)):
+    _check_csrf(request, csrf_token)
     return JSONResponse(executar_coleta(demo=_modo_demo()))
 
 
 @app.get("/health")
 def health():
     return {"ok": True, "agora": datetime.now(timezone.utc).isoformat(),
-            "scheduler": bool(_scheduler and _scheduler.running), "demo": _modo_demo()}
+            "scheduler": bool(_scheduler and _scheduler.running), "demo": _modo_demo(),
+            "real_scraper_enabled": SCRAPER_ENABLED}

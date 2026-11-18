@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Novo processo · MAG Tracker{% endblock %}
+{% block content %}
+<h1>Cadastrar processo</h1>
+<p class="muted">Os dados pessoais são armazenados com criptografia no banco local. Inclua somente informações cujo tratamento esteja autorizado.</p>
+{% if resultado %}<div class="alert alert-info" role="status">{{ resultado }}</div>{% endif %}
+<section class="painel">
+  <h2>Cadastro manual</h2>
+  <form method="post" action="/processos/novo" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Número do processo *<input name="numero_processo" required maxlength="30" value="{{ numero_teste or '' }}"></label>
+    <label>Status *<select name="status" required>{% for s in ["Em análise", "Pendente", "Concluído", "Aguardando documentação", "Deferido", "Indeferido"] %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+    <label>Benefício<input name="beneficio_solicitado" maxlength="200"></label>
+    <label>Código do produtor<input name="codigo_produtor" maxlength="40"></label>
+    <label>Nome do cliente<input name="cliente_nome" maxlength="200" autocomplete="off"></label>
+    <label>CPF<input name="cpf" inputmode="numeric" maxlength="14" autocomplete="off"></label>
+    <label>Data de nascimento<input name="data_nascimento" type="date" autocomplete="off"></label>
+    <label>Data da solicitação<input name="data_solicitacao" type="date"></label>
+    <label class="wide">Comentários / pendências<textarea name="comentarios" maxlength="2000" rows="3"></textarea></label>
+    <div class="wide"><button class="btn btn-primary" type="submit">Salvar processo</button></div>
+  </form>
+</section>
+<section class="painel">
+  <h2>Testar consulta autorizada no portal MAG</h2>
+  {% if not scraper_enabled %}
+  <p class="muted">Consulta real desativada por padrão. Para habilitar, configure <code>MAG_ENABLE_REAL_SCRAPER=1</code>, confirme que você tem autorização para consultar esses dados, e reinicie o servidor. A consulta é individual e limitada a uma tentativa por processo a cada 60 segundos. Não há tentativa de contornar bloqueios ou autenticação do portal.</p>
+  {% elif demo %}<p class="alert alert-erro">Desative o modo demo antes de consultar o portal real.</p>
+  {% else %}
+  <p class="muted">Cada envio fará uma consulta única usando o número, CPF e nascimento fornecidos. O scraper não contorna sessão, token, CAPTCHA ou bloqueios do portal.</p>
+  <form method="post" action="/processos/raspar" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Número do processo *<input name="numero_processo" required maxlength="30" value="{{ numero_teste or '' }}"></label>
+    <label>CPF<input name="cpf" inputmode="numeric" maxlength="14" autocomplete="off"></label>
+    <label>Data de nascimento<input name="data_nascimento" type="date" autocomplete="off"></label>
+    <div class="wide"><button class="btn btn-primary" type="submit">Testar raspagem deste processo</button></div>
+  </form>
+  {% endif %}
+</section>
+<a class="btn" href="/processos">Voltar à lista</a>
+{% endblock %}
