@@ -113,7 +113,11 @@ def _modo_demo() -> bool:
 def page_login(request: Request):
     if get_session(request):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "erro": None})
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"erro": None},
+    )
 
 
 @app.post("/login")
@@ -122,9 +126,12 @@ def do_login(request: Request, email: str = Form(...), senha: str = Form(...)):
     ip = request.client.host if request.client else ""
     if not user:
         db.log_acesso(email, "login_falhou", "credenciais inválidas", ip)
-        return templates.TemplateResponse("login.html",
-                                          {"request": request, "erro": "Credenciais inválidas"},
-                                          status_code=401)
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={"erro": "Credenciais inválidas"},
+            status_code=401,
+        )
     db.log_acesso(user["email"], "login", f"perfil={user['perfil']}", ip)
     resp = RedirectResponse("/", status_code=302)
     set_session(resp, user)
@@ -144,12 +151,13 @@ def do_logout(request: Request):
 @app.get("/", response_class=HTMLResponse)
 def page_dashboard(request: Request, user: dict = Depends(require_user)):
     stats = db.dashboard_stats(ALERTA_DIAS)
-    recentes, _ = [], []
     procs = db.listar_processos(limite=5)
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request, "user": user, "stats": stats, "recentes": procs,
-        "alerta_dias": ALERTA_DIAS,
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={"user": user, "stats": stats, "recentes": procs,
+                 "alerta_dias": ALERTA_DIAS},
+    )
 
 
 @app.get("/processos", response_class=HTMLResponse)
@@ -159,11 +167,12 @@ def page_processos(request: Request, status: str | None = None, q: str | None = 
     statuses = ["Em análise", "Pendente", "Concluído", "Aguardando documentação",
                 "Deferido", "Indeferido"]
     db.log_acesso(user["email"], "listagem", f"status={status} q={q}")
-    return templates.TemplateResponse("processos.html", {
-        "request": request, "user": user, "processos": processos,
-        "statuses": statuses, "status_sel": status or "", "q": q or "",
-        "alerta_dias": ALERTA_DIAS,
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="processos.html",
+        context={"user": user, "processos": processos, "statuses": statuses,
+                 "status_sel": status or "", "q": q or "", "alerta_dias": ALERTA_DIAS},
+    )
 
 
 @app.get("/processos/{numero}", response_class=HTMLResponse)
@@ -173,10 +182,12 @@ def page_processo(request: Request, numero: str, user: dict = Depends(require_us
         raise HTTPException(404, "Processo não encontrado")
     db.log_acesso(user["email"], "detalhe", f"processo={numero}",
                   request.client.host if request.client else "")
-    return templates.TemplateResponse("detalhe.html", {
-        "request": request, "user": user, "proc": proc, "hist": hist,
-        "alerta_dias": ALERTA_DIAS,
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="detalhe.html",
+        context={"user": user, "proc": proc, "hist": hist,
+                 "alerta_dias": ALERTA_DIAS},
+    )
 
 
 @app.get("/auditoria", response_class=HTMLResponse)
@@ -184,10 +195,12 @@ def page_auditoria(request: Request, user: dict = Depends(require_admin)):
     with db.get_db() as conn:
         logs = conn.execute("SELECT * FROM logs_acesso ORDER BY id DESC LIMIT 200").fetchall()
         execs = conn.execute("SELECT * FROM execucoes_scraper ORDER BY id DESC LIMIT 50").fetchall()
-    return templates.TemplateResponse("auditoria.html", {
-        "request": request, "user": user,
-        "logs": [dict(l) for l in logs], "execs": [dict(e) for e in execs],
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="auditoria.html",
+        context={"user": user, "logs": [dict(l) for l in logs],
+                 "execs": [dict(e) for e in execs]},
+    )
 
 
 # ---------------------------------------------------------------- API JSON
