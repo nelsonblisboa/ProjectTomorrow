@@ -12,29 +12,26 @@ $env:MAG_DEMO = "1"
 python -m uvicorn app.web:app --host 127.0.0.1 --port 8000
 ```
 
-Abra http://localhost:8000/login. No modo demo, os usuários de demonstração são criados localmente pelo aplicativo. Não use essas credenciais em ambientes expostos.
+Abra http://localhost:8000/login. `MAG_DEMO=1` ativa apenas as contas de acesso de demonstração em banco novo; não gera registros de processos fictícios. Não use essas credenciais em ambientes expostos.
+
+## Remover os registros fictícios existentes
+
+Pare o servidor com Ctrl+C, atualize a branch e execute:
+
+```powershell
+git pull origin copilot/security-quality
+python -m app.limpar_demo
+```
+
+O comando mostra quantos processos têm exatamente o padrão criado pelo gerador demo (`SIM` + seis dígitos), pede confirmação e cria um backup datado do banco antes de excluir esses processos e seus históricos. Contas, logs de auditoria, execuções do scraper e processos com outros números são preservados. Sem o texto de confirmação, nada é apagado.
 
 ## Cadastrar dados reais manualmente
 
-Entre como administrador, abra **Processos → Cadastrar processo / testar consulta**, preencha o formulário e salve. Nome e CPF são armazenados criptografados com a chave Fernet; a lista mascara o CPF. Só insira dados pessoais se tiver autorização e base legal para tratá-los. A instância local de desenvolvimento não deve ser exposta publicamente.
+Entre como administrador, abra **Processos → Cadastrar processo / testar consulta**, preencha o formulário e salve. Nome e CPF são armazenados criptografados com a chave Fernet; a lista mascara o CPF. Só insira informações cujo tratamento esteja autorizado. Mantenha o servidor local e o banco protegidos.
 
 ## Testar uma consulta real do scraper
 
-Por segurança, consultas reais ficam desativadas por padrão e nunca são feitas pelo agendador. Primeiro confirme que você está autorizado a consultar o portal e os dados em questão, instale o Chromium (`python -m playwright install chromium`) e reinicie a aplicação com:
-
-```powershell
-$env:MAG_DEMO = "0"
-$env:MAG_ENABLE_REAL_SCRAPER = "1"
-$env:MAG_COOKIE_SECURE = "0" # somente localhost sem HTTPS
-$env:MAG_SECRET = "gere-um-segredo-aleatorio-de-32-caracteres-ou-mais"
-$env:MAG_FERNET_KEY = "chave-fernet-valida-gerada-para-este-ambiente"
-$env:MAG_BLIND_SALT = "salt-aleatorio-de-32-caracteres-ou-mais"
-$env:MAG_ADMIN_EMAIL = "seu-email"
-$env:MAG_ADMIN_PASSWORD = "uma-senha-forte-com-12-caracteres-ou-mais"
-python -m uvicorn app.web:app --host 127.0.0.1 --port 8000
-```
-
-Gere uma chave Fernet com `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Defina os valores secretos de verdade localmente; não use os exemplos acima literalmente nem os adicione ao Git. Na tela de cadastro, teste **um processo por vez**. Há intervalo mínimo de 60 segundos para repetir a consulta ao mesmo número. O scraper não contorna login, token, CAPTCHA ou bloqueios; se o portal negar acesso, peça acesso oficial à MAG. A página de acompanhamento pode exigir token/sessão que o fluxo público não disponibiliza, portanto a consulta pode falhar legitimamente.
+Consultas reais ficam desativadas por padrão e nunca são feitas automaticamente. Confirme que você está autorizado a consultar o portal e os dados em questão, instale o Chromium (`python -m playwright install chromium`) e reinicie a aplicação com `MAG_DEMO=0`, `MAG_ENABLE_REAL_SCRAPER=1` e os segredos de produção descritos abaixo. O formulário permite testar um processo por vez, com limite de uma consulta a cada 60 segundos por processo. O scraper não contorna login, token, CAPTCHA ou bloqueios; se o portal negar acesso, peça autorização oficial à MAG.
 
 ## Testes
 
@@ -51,6 +48,8 @@ O modo seguro é o padrão (`MAG_DEMO=0`). Antes de iniciar, configure segredos 
 - `MAG_BLIND_SALT`: salt aleatório com pelo menos 32 caracteres para índice de busca.
 - `MAG_ADMIN_EMAIL` e `MAG_ADMIN_PASSWORD`: usados somente para criar o primeiro administrador quando a base ainda não tem usuários; senha com pelo menos 12 caracteres.
 - `MAG_COOKIE_SECURE`: opcional; cookies Secure ficam habilitados fora do modo demo por padrão; desative somente para localhost sem HTTPS.
+- `MAG_ENABLE_REAL_SCRAPER=1`: opt-in explícito para consulta real individual autorizada.
+- `MAG_ALLOW_DEMO_DATA=1`: opt-in adicional para dados fictícios de teste; mantenha desativado na base de dados real.
 
 Nunca publique segredos, chaves, CPFs ou credenciais de demonstração no Git.
 

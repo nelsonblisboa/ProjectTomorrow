@@ -18,17 +18,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import db
-from .scraper import executar_coleta, consultar_processo_real, INTERVALO_MINUTOS
+from .scraper import executar_coleta, consultar_processo_real
 
 BASE = Path(__file__).resolve().parent
 SECRET = os.environ.get("MAG_SECRET") or secrets.token_urlsafe(32)
 COOKIE = "mag_session"
 CSRF_COOKIE = "mag_csrf"
 ALERTA_DIAS = int(os.environ.get("MAG_ALERTA_DIAS", "30"))
-app = FastAPI(title="MAG Tracker", version="0.4.0")
+app = FastAPI(title="MAG Tracker", version="0.5.0")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 SCRAPER_ENABLED = os.environ.get("MAG_ENABLE_REAL_SCRAPER", "0").strip().lower() in {"1", "true", "yes"}
+ALLOW_DEMO_DATA = os.environ.get("MAG_ALLOW_DEMO_DATA", "0").strip().lower() in {"1", "true", "yes"}
 _scrape_lock = threading.Lock()
 _last_scrape_by_process: dict[str, float] = {}
 
@@ -38,7 +39,7 @@ def _sign(payload: str) -> str:
 
 
 def _modo_demo() -> bool:
-    """Demo must be opted into; production is the safe default."""
+    """Demo auth is opt-in; enabling it does not generate demo process records."""
     return os.environ.get("MAG_DEMO", "0").strip().lower() in {"1", "true", "yes"}
 
 
@@ -162,30 +163,14 @@ def startup() -> None:
                 "(mínimo 12 caracteres) para criar o administrador inicial."
             )
         db.criar_usuario(email, password, "Administrador", "admin")
-    _start_scheduler()
-
-
-_scheduler = None
-
-
-def _start_scheduler():
-    global _scheduler
-    try:
-        from apscheduler.schedulers.background import BackgroundScheduler
-        _scheduler = BackgroundScheduler()
-        _scheduler.add_job(lambda: executar_coleta(demo=_modo_demo()),
-                           "interval", minutes=INTERVALO_MINUTOS, id="coleta_mag")
-        _scheduler.start()
-    except Exception:
-        _scheduler = None
+    # No scheduled demo scraper: real queries are initiated individually by an admin.
 
 
 @app.get("/login", response_class=HTMLResponse)
 def page_login(request: Request):
     if get_session(request):
         return RedirectResponse("/", status_code=302)
-    response = _issue_template(request, "login.html", {"erro": None, "demo": _modo_demo()})
-    return response
+    return _issue_template(request, "login.html", {"erro": None, "demo": _modo_demo()})
 
 
 @app.post("/login")
@@ -366,11 +351,14 @@ def api_processos(status: str | None = None, q: str | None = None,
 def api_coleta_now(request: Request, csrf_token: str = Form(...),
                    user: dict = Depends(require_admin)):
     _check_csrf(request, csrf_token)
-    return JSONResponse(executar_coleta(demo=_modo_demo()))
+    if not (ALLOW_DEMO_DATA and _modo_demo()):
+        raise HTTPException(403, "Geração de dados fictícios desativada. Cadastre dados reais ou habilite MAG_ALLOW_DEMO_DATA=1 somente em ambiente de teste.")
+    return JSONResponse(executar_coleta(demo=True))
 
 
 @app.get("/health")
 def health():
     return {"ok": True, "agora": datetime.now(timezone.utc).isoformat(),
-            "scheduler": bool(_scheduler and _scheduler.running), "demo": _modo_demo(),
-            "real_scraper_enabled": SCRAPER_ENABLED}
+            "scheduler": False, "demo": _modo_demo(),
+            "real_scraper_enabled": SCRAPER_ENABLED,
+            "demo_data_enabled": ALLOW_DEMO_DATA and _modo_demo()}
