@@ -23,16 +23,16 @@
 <section class="painel">
   <h2>Testar consulta autorizada no portal MAG</h2>
   {% if not scraper_enabled %}
-  <p class="muted">Consulta real desativada por padrão. Para habilitar, configure <code>MAG_ENABLE_REAL_SCRAPER=1</code>, confirme que você tem autorização para consultar esses dados, e reinicie o servidor. A consulta é individual e limitada a uma tentativa por processo a cada 60 segundos. Não há tentativa de contornar bloqueios ou autenticação do portal.</p>
+  <p class="muted">Consulta real desativada por padrão. Para habilitar, configure <code>MAG_ENABLE_REAL_SCRAPER=1</code> e reinicie o servidor. Consulte somente dados para os quais você tenha autorização. Não há tentativa de contornar autenticação ou proteções do portal.</p>
   {% elif demo %}<p class="alert alert-erro">Desative o modo demo antes de consultar o portal real.</p>
   {% else %}
-  <p class="muted">Cada envio fará uma consulta única usando o número, CPF e nascimento fornecidos. O scraper não contorna sessão, token, CAPTCHA ou bloqueios do portal.</p>
+  <p class="muted">Preencha os três campos como no formulário oficial. Cada envio inicia uma consulta única; aguarde a resposta. O sistema não contorna login, token, CAPTCHA ou bloqueios do portal.</p>
   <form method="post" action="/processos/raspar" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Número do processo *<input name="numero_processo" required maxlength="30" value="{{ numero_teste or '' }}"></label>
-    <label>CPF<input name="cpf" inputmode="numeric" maxlength="14" autocomplete="off"></label>
-    <label>Data de nascimento<input name="data_nascimento" type="date" autocomplete="off"></label>
-    <div class="wide"><button class="btn btn-primary" type="submit">Testar raspagem deste processo</button></div>
+    <label>CPF *<input name="cpf" required inputmode="numeric" maxlength="14" autocomplete="off"></label>
+    <label>Data de nascimento *<input name="data_nascimento" required type="date" autocomplete="off"></label>
+    <div class="wide"><button class="btn btn-primary" type="submit">Acompanhar processo</button></div>
   </form>
   {% endif %}
 </section>
