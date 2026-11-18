@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · MAG Tracker{% endblock %}
+{% block content %}
+<h1>Dashboard de Pendências</h1>
+{% if stats.ultima_execucao %}
+<p class="muted small">Última coleta: {{ stats.ultima_execucao.finalizado_em }} — status <b>{{ stats.ultima_execucao.status }}</b>
+{% if stats.ultima_execucao.status == 'bloqueado' %}· ⚠️ acesso ao portal requer credenciais/token{% endif %}</p>
+{% else %}
+<p class="muted small">Nenhuma coleta executada ainda. Rode <code>python -m app.scraper_run --demo</code> ou clique em Coletar agora (admin).</p>
+{% endif %}
+
+<div class="cards">
+  <div class="card"><div class="num">{{ stats.total }}</div><div class="lbl">Processos monitorados</div></div>
+  <div class="card warn"><div class="num">{{ stats.pendentes }}</div><div class="lbl">Com pendência</div></div>
+  <div class="card info"><div class="num">{{ stats.em_analise }}</div><div class="lbl">Em análise</div></div>
+  <div class="card ok"><div class="num">{{ stats.concluidos_7d }}</div><div class="lbl">Concluídos (7 dias)</div></div>
+  <div class="card crit"><div class="num">{{ stats.alerta_critico }}</div><div class="lbl">Críticos &gt; {{ alerta_dias }} dias</div></div>
+</div>
+
+{% if user.perfil == 'admin' %}
+<form method="post" action="/api/coleta/run" class="inline-form">
+  <button class="btn btn-primary" type="submit">▶ Executar coleta agora</button>
+</form>
+{% endif %}
+
+<h2>Maiores pendências</h2>
+<table class="tabela">
+<thead><tr><th>Nº Processo</th><th>Cliente</th><th>Benefício</th><th>Status</th><th>Dias</th><th>Última atualização</th></tr></thead>
+<tbody>
+{% for p in recentes %}
+<tr class="{{ 'linha-alerta' if p.status == 'Pendente' and p.dias_corridos and p.dias_corridos > alerta_dias }}">
+  <td><a href="/processos/{{ p.numero_processo }}">{{ p.numero_processo }}</a></td>
+  <td>{{ p.cliente_nome or '—' }}</td>
+  <td>{{ p.beneficio_solicitado or '—' }}</td>
+  <td><span class="badge badge-{{ p.status|lower|replace(' ', '-')|replace('ç','c') }}">{{ p.status }}</span></td>
+  <td>{{ p.dias_corridos if p.dias_corridos is not none else '—' }}</td>
+  <td>{{ p.ultima_atualizacao or '—' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="6" class="muted center">Sem dados — execute uma coleta.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

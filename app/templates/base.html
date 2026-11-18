@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}MAG Tracker{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if user %}
+<nav class="topbar">
+  <div class="brand">🛰️ MAG Tracker</div>
+  <div class="links">
+    <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
+    <a href="/processos" class="{{ 'active' if request.url.path.startswith('/processos') }}">Processos</a>
+    {% if user.perfil == 'admin' %}<a href="/auditoria" class="{{ 'active' if request.url.path == '/auditoria' }}">Auditoria</a>{% endif %}
+  </div>
+  <div class="userbox">
+    <span>{{ user.nome or user.email }} · {{ user.perfil }}</span>
+    <a class="btn btn-sm" href="/logout">Sair</a>
+  </div>
+</nav>
+{% endif %}
+<main class="container">
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">MAG Tracker MVP — Fase 2 · dados de demonstração enquanto o acesso ao portal não é liberado</footer>
+</body>
+</html>

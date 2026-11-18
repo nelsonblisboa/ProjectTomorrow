@@ -1,0 +1,6 @@
+data/
+*.db
+.fernet.key
+__pycache__/
+*.pyc
+.env

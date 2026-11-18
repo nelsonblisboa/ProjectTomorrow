@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Processo {{ proc.numero_processo }} · MAG Tracker{% endblock %}
+{% block content %}
+<p><a href="/processos">← Voltar</a></p>
+{% set critico = proc.status == 'Pendente' and proc.dias_corridos and proc.dias_corridos > alerta_dias %}
+<h1>Processo {{ proc.numero_processo }}
+  {% if critico %}<span class="badge badge-critico">⚠ CRÍTICO &gt; {{ alerta_dias }} dias</span>{% endif %}
+</h1>
+
+<div class="detalhe-grid">
+  <div class="painel">
+    <h2>Dados do processo</h2>
+    <dl>
+      <dt>Status</dt><dd><span class="badge badge-{{ proc.status|lower|replace(' ', '-')|replace('ç','c') }}">{{ proc.status }}</span></dd>
+      <dt>Benefício solicitado</dt><dd>{{ proc.beneficio_solicitado or '—' }}</dd>
+      <dt>Código do produtor</dt><dd>{{ proc.codigo_produtor or '—' }}</dd>
+      <dt>Cliente</dt><dd>{{ proc.cliente_nome or '—' }}</dd>
+      <dt>CPF</dt><dd>{{ proc.cpf or '—' }}</dd>
+      <dt>Data de nascimento</dt><dd>{{ proc.data_nascimento or '—' }}</dd>
+      <dt>Data da solicitação</dt><dd>{{ proc.data_solicitacao or '—' }}</dd>
+      <dt>Última atualização</dt><dd>{{ proc.ultima_atualizacao or '—' }}</dd>
+      <dt>Dias corridos</dt><dd><b>{{ proc.dias_corridos if proc.dias_corridos is not none else '—' }}</b></dd>
+      <dt>Pendência / comentários</dt><dd class="{{ 'texto-alerta' if critico }}">{{ proc.comentarios or 'Sem pendências registradas.' }}</dd>
+    </dl>
+  </div>
+
+  <div class="painel">
+    <h2>Timeline de acompanhamento</h2>
+    <ol class="timeline">
+      {% for h in hist %}
+      <li class="{{ 'tl-pendente' if h.status == 'Pendente' }}">
+        <div class="tl-data">{{ h.capturado_em }}</div>
+        <div><span class="badge badge-{{ (h.status or '')|lower|replace(' ', '-')|replace('ç','c') }}">{{ h.status }}</span>
+             {% if h.dias_corridos is not none %}· {{ h.dias_corridos }} dias{% endif %}</div>
+        {% if h.comentarios %}<div class="small muted">{{ h.comentarios }}</div>{% endif %}
+      </li>
+      {% else %}
+      <li class="muted">Sem histórico registrado.</li>
+      {% endfor %}
+    </ol>
+    <p class="muted small">Monitorado desde {{ proc.primeira_consulta }} · última coleta {{ proc.ultima_coleta }}</p>
+  </div>
+</div>
+{% endblock %}

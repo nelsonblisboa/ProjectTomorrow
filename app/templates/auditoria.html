@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Auditoria · MAG Tracker{% endblock %}
+{% block content %}
+<h1>Auditoria (LGPD)</h1>
+
+<h2>Execuções do scraper</h2>
+<table class="tabela">
+<thead><tr><th>Início</th><th>Fim</th><th>Status</th><th>Vistos</th><th>Novos</th><th>Alterados</th><th>Mensagem</th></tr></thead>
+<tbody>
+{% for e in execs %}
+<tr><td>{{ e.iniciado_em }}</td><td>{{ e.finalizado_em }}</td>
+<td><span class="badge badge-{{ e.status }}">{{ e.status }}</span></td>
+<td>{{ e.processos_vistos }}</td><td>{{ e.novos }}</td><td>{{ e.alterados }}</td>
+<td class="small">{{ e.mensagem or '' }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted center">Sem execuções.</td></tr>{% endfor %}
+</tbody></table>
+
+<h2>Logs de acesso</h2>
+<table class="tabela">
+<thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Detalhe</th><th>IP</th></tr></thead>
+<tbody>
+{% for l in logs %}
+<tr><td>{{ l.quando }}</td><td>{{ l.usuario_email }}</td><td>{{ l.acao }}</td>
+<td class="small">{{ l.detalhe or '' }}</td><td>{{ l.ip or '' }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted center">Sem logs.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

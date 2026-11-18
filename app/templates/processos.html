@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Processos · MAG Tracker{% endblock %}
+{% block content %}
+<h1>Consulta de Processos</h1>
+<form method="get" action="/processos" class="filtros">
+  <input type="search" name="q" value="{{ q }}" placeholder="Busca: nº processo, cliente, CPF, produtor…">
+  <select name="status">
+    <option value="">Todos os status</option>
+    {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == status_sel }}>{{ s }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-primary" type="submit">Filtrar</button>
+  <a class="btn" href="/processos">Limpar</a>
+</form>
+
+<table class="tabela">
+<thead><tr>
+  <th>Nº Processo</th><th>Benefício</th><th>Produtor</th><th>Cliente</th><th>CPF</th>
+  <th>Solicitação</th><th>Última atualiz.</th><th>Dias</th><th>Status</th><th>Pendência</th>
+</tr></thead>
+<tbody>
+{% for p in processos %}
+<tr class="{{ 'linha-alerta' if p.status == 'Pendente' and p.dias_corridos and p.dias_corridos > alerta_dias }}">
+  <td><a href="/processos/{{ p.numero_processo }}"><b>{{ p.numero_processo }}</b></a></td>
+  <td>{{ p.beneficio_solicitado or '—' }}</td>
+  <td>{{ p.codigo_produtor or '—' }}</td>
+  <td>{{ p.cliente_nome or '—' }}</td>
+  <td>{{ p.cpf or '—' }}</td>
+  <td>{{ p.data_solicitacao or '—' }}</td>
+  <td>{{ p.ultima_atualizacao or '—' }}</td>
+  <td>{{ p.dias_corridos if p.dias_corridos is not none else '—' }}</td>
+  <td><span class="badge badge-{{ p.status|lower|replace(' ', '-')|replace('ç','c') }}">{{ p.status }}</span></td>
+  <td class="small">{{ (p.comentarios or '')[:60] }}{% if p.comentarios and p.comentarios|length > 60 %}…{% endif %}</td>
+</tr>
+{% else %}
+<tr><td colspan="10" class="muted center">Nenhum processo encontrado.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+<p class="muted small">{{ processos|length }} resultado(s). CPFs exibidos mascarados (LGPD); busca por CPF completo funciona no campo acima.</p>
+{% endblock %}

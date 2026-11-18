@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Entrar · MAG Tracker{% endblock %}
+{% block content %}
+<div class="login-card">
+  <h1>🛰️ MAG Tracker</h1>
+  <p class="muted">Gestão inteligente de sinistros — MAG Seguros</p>
+  {% if erro %}<div class="alert alert-erro">{{ erro }}</div>{% endif %}
+  <form method="post" action="/login">
+    <label>E-mail
+      <input type="email" name="email" required autofocus placeholder="voce@empresa.com">
+    </label>
+    <label>Senha
+      <input type="password" name="senha" required placeholder="••••••••">
+    </label>
+    <button class="btn btn-primary" type="submit">Entrar</button>
+  </form>
+  <p class="muted small">Demo: admin@magtracker.local / admin123 · consulta@magtracker.local / consulta123</p>
+</div>
+{% endblock %}
